@@ -2,74 +2,94 @@ import os
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 
-def load_and_chunk_folder(folder_path, chunk_size=500, chunk_overlap=50):
+# split_into_chunks_fixed.py - исправленная версия
+
+import os
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
+
+def load_and_chunk_folder(folder_path, chunk_size=500, chunk_overlap=100):
     """
-    Загружает все текстовые файлы из папки и разбивает на чанки
-
-    Args:
-        folder_path (str): Путь к папке с файлами
-        chunk_size (int): Размер чанка в символах
-        chunk_overlap (int): Перекрытие между чанками
-
-    Returns:
-        list: Список объектов Document с чанками и метаданными
+    Загрузка и разбивка на чанки всех файлов в папке
+    С правильным сохранением source в метаданных
     """
-
-    # Настраиваем сплиттер
+    documents = []
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        separators=["\n\n", "\n", ". ", " ", ""],
         length_function=len,
-        add_start_index=True,
+        separators=["\n\n", "\n", " ", ""]
     )
 
-    all_documents = []
+    # Поддерживаемые расширения
+    extensions = ['.txt', '.md', '.pdf', '.docx']
 
-    # Проходим по всем файлам в папке
-    for filename in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, filename)
+    for file_name in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, file_name)
 
-        # Пропускаем папки
         if os.path.isdir(file_path):
             continue
 
-        # Проверяем расширение файла
-        if not filename.endswith(('.txt', '.md', '.rst', '.json')):
-            print(f"Пропускаем файл (неподдерживаемый формат): {filename}")
+        _, ext = os.path.splitext(file_name)
+        if ext.lower() not in extensions:
             continue
 
-        try:
-            # Читаем содержимое файла
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+        print(f"📄 Обработка: {file_name}")
 
-            # Создаем метаданные для файла
-            metadata = {
-                "source": filename,           # Имя файла
-                "file_path": file_path,       # Полный путь
-                "file_size": os.path.getsize(file_path),  # Размер файла
+        # Читаем файл
+        try:
+            if ext.lower() in ['.txt', '.md']:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            else:
+                # Для других форматов используйте соответствующие библиотеки
+                continue
+
+            # Создаем базовый документ
+            base_metadata = {
+                'source': file_name,  # ВАЖНО: имя файла
+                'file_path': file_path,
+                'file_name': file_name,
+                'file_size': os.path.getsize(file_path),
+                'file_type': ext
             }
 
-            # Создаем документ
-            doc = Document(
-                page_content=content,
-                metadata=metadata
-            )
-
             # Разбиваем на чанки
-            chunks = text_splitter.split_documents([doc])
+            chunks = text_splitter.split_text(content)
 
-            # Добавляем номер чанка в метаданные
+            # Создаем Document для каждого чанка
             for i, chunk in enumerate(chunks):
-                chunk.metadata["chunk_index"] = i
-                chunk.metadata["total_chunks"] = len(chunks)
+                if len(chunk.strip()) < 50:  # Пропускаем слишком короткие
+                    continue
 
-            all_documents.extend(chunks)
-            print(f"✅ Обработан файл: {filename} -> {len(chunks)} чанков")
+                metadata = base_metadata.copy()
+                metadata.update({
+                    'chunk_index': i,
+                    'chunk_total': len(chunks),
+                    'chunk_length': len(chunk)
+                })
+
+                doc = Document(
+                    page_content=chunk,
+                    metadata=metadata
+                )
+                documents.append(doc)
+
+            print(f"  ✅ Создано {len(chunks)} чанков из {file_name}")
 
         except Exception as e:
-            print(f"❌ Ошибка при обработке {filename}: {e}")
+            print(f"  ❌ Ошибка при обработке {file_name}: {e}")
 
-    print(f"\n📊 Всего создано чанков: {len(all_documents)}")
-    return all_documents
+    print(f"\n✅ Всего загружено {len(documents)} чанков")
+
+    # Выводим статистику по источникам
+    sources = {}
+    for doc in documents:
+        source = doc.metadata.get('source', 'unknown')
+        sources[source] = sources.get(source, 0) + 1
+
+    print(f"📄 Уникальных источников: {len(sources)}")
+    for source, count in sorted(sources.items())[:5]:
+        print(f"  - {source}: {count} чанков")
+
+    return documents
