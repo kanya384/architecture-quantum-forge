@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_FLASH_ATTENTION=1
+    restart: unless-stopped
+    entrypoint: /bin/sh -c "ollama serve && sleep 5 && ollama pull llama3.1 && wait"
+
+  ollama-safety:
+    image: ollama/ollama:latest
+    container_name: ollama-safety
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_safety_data:/root/.ollama
+    environment:
+      - OLLAMA_FLASH_ATTENTION=1
+    restart: unless-stopped
+    entrypoint: /bin/sh -c "ollama serve && sleep 5 && ollama pull llama-guard3:1b && wait"
+
+volumes:
+  ollama_data:
+  ollama_safety_data:

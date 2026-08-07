@@ -1,4 +1,4 @@
-
+from safety import check_safety
 import requests
 import numpy as np
 from search import VectorSearchEngine
@@ -9,7 +9,6 @@ search_engine = VectorSearchEngine(
 )
 search_engine.load()
 
-# ФИКС: переопределяем метод поиска для совместимости
 def safe_search(query, k=100):
     """Безопасный поиск с правильным энкодингом"""
     try:
@@ -76,34 +75,70 @@ def build_prompt(question, chunks):
     Пожалуйста, объясни свои шаги и дай ответ.
     Ответ:"""
 
-def ask_ollama(prompt):
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "llama3.1",
-            "prompt": prompt,
-            "stream": False,
-            "temperature": 0.7,
-            "options": {
-                "num_ctx": 8192
-            }
+def ask_ollama(prompt, model="llama3.1"):
+    """
+    Отправляет запрос к Ollama с обработкой ошибок
+    """
+    url = "http://localhost:11434/api/generate"
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "temperature": 0.7,
+        "options": {
+            "num_ctx": 4096
         }
-    )
-    return response.json()['response']
+    }
+
+    try:
+        print(f"📤 Отправка запроса к модели {model}...")
+        response = requests.post(url, json=payload, timeout=60)
+
+        if response.status_code != 200:
+            print(f"❌ HTTP ошибка: {response.status_code}")
+            print(f"Ответ сервера: {response.text[:500]}")
+            return f"Ошибка API: {response.status_code}"
+
+        try:
+            data = response.json()
+
+            # Проверяем наличие ключа 'response'
+            if 'response' in data:
+                return data['response']
+            elif 'error' in data:
+                return f"Ошибка модели: {data['error']}"
+            else:
+                print(f"⚠️ Неожиданный формат ответа: {json.dumps(data, indent=2)[:500]}")
+                return f"Неизвестный формат ответа. Ключи: {list(data.keys())}"
+
+        except json.JSONDecodeError as e:
+            print(f"❌ Ошибка парсинга JSON: {e}")
+            print(f"Сырой ответ: {response.text[:500]}")
+            return f"Ошибка парсинга: {e}"
+
+    except requests.exceptions.Timeout:
+        return "⏱️ Превышено время ожидания"
+    except requests.exceptions.ConnectionError:
+        return "🔌 Нет соединения с Ollama. Проверьте, запущен ли контейнер."
+    except Exception as e:
+        print(f"❌ Критическая ошибка: {e}")
+        return f"Ошибка: {e}"
 
 def rag_query(question):
-    # Используем безопасный поиск
-    chunks = search_engine.search(question, k=30)
+    if not check_safety(question, role="user"):
+           return "❌ Ваш запрос не прошел проверку безопасности."
+    chunks = search_engine.search(question, k=10)
 
     if not chunks:
         return "Не найдено документов."
 
     prompt = build_prompt(question, chunks)
-    return ask_ollama(prompt)
+    answer = ask_ollama(prompt)
+    if not check_safety(answer, role="assistant"):
+            return "⚠️ Сгенерированный ответ не прошел проверку безопасности."
 
-# Запуск
-print("\n🤖 RAG Чат-бот запущен!")
-print("Введите 'exit' для выхода\n")
+    return answer
 
 while True:
     q = input("❓ Вопрос: ")
@@ -117,4 +152,5 @@ while True:
 
     print("⏳ Думаю...")
     answer = rag_query(q)
+
     print(f"💬 Ответ: {answer}\n")

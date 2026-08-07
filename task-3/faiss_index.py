@@ -100,8 +100,8 @@ def create_faiss_index(embeddings_file='embeddings.pkl',
     json_metadata = {
         'index_info': metadata_for_search['index_info'],
         'model_info': metadata_for_search['model_info'],
-        'texts_preview': [t[:100] + '...' for t in texts[:5]],
-        'metadata_preview': metadata[:5],
+        'texts_preview': [t[:100] + '...' for t in texts[:100]],
+        'metadata_preview': metadata[:100],
         'total_chunks': len(texts)
     }
 

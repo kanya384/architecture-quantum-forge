@@ -125,19 +125,3 @@ class VectorSearchEngine:
             'total_texts': len(self.metadata['texts']),
             'model': self.metadata['model_info']['name']
         }
-
-search_engine = VectorSearchEngine(
-    index_file='./data/faiss_index.bin',
-    metadata_file='./data/faiss_metadata.pkl'
-)
-
-search_engine.load()
-
-results = search_engine.search("Дарт Корр", k=100)
-
-for i, result in enumerate(results, 1):
-    print(f"\n📌 Результат {i}:")
-    print(f"  Текст: {result['text'][:200]}...")
-    print(f"  Источник: {result['metadata'].get('source', 'unknown')}")
-    print(f"  Сходство: {result['score']:.3f}")
-    print(f"  Расстояние: {result['distance']:.3f}")
